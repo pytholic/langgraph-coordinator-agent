@@ -21,13 +21,20 @@ from deep_research_agent.state import DeepAgentState
 
 
 class SubAgent(TypedDict):
+    """Configuration for a specialized sub-agent."""
+
     name: str
     description: str
     prompt: str
     tools: NotRequired[list[str]]
 
 
-def _create_task_tool(tools, subagents: list[SubAgent], model, state_schema):
+def _create_task_tool(
+    tools: list[BaseTool],
+    subagents: list[SubAgent],
+    model: object,
+    state_schema: type[DeepAgentState],
+) -> BaseTool:
     """Create a task delegation tool that enables context isolation through sub-agents.
 
     This function implements the core pattern for spawning specialized sub-agents with
@@ -77,7 +84,7 @@ def _create_task_tool(tools, subagents: list[SubAgent], model, state_schema):
         subagent_type: str,
         state: Annotated[DeepAgentState, InjectedState],
         tool_call_id: Annotated[str, InjectedToolCallId],
-    ):
+    ) -> Command | str:
         """Delegate a task to a specialized sub-agent with isolated context.
 
         This creates a fresh context for the sub-agent containing only the task description,

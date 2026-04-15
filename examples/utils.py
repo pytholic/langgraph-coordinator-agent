@@ -1,7 +1,10 @@
 """Utility functions for displaying messages and prompts in Jupyter notebooks."""
 
 import json
+from typing import Any
 
+from langchain_core.messages import BaseMessage
+from langgraph.pregel import Pregel
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -9,16 +12,14 @@ from rich.text import Text
 console = Console()
 
 
-def format_message_content(message):
+def format_message_content(message: BaseMessage) -> str:
     """Convert message content to displayable string."""
-    parts = []
+    parts: list[str] = []
     tool_calls_processed = False
 
-    # Handle main content
     if isinstance(message.content, str):
         parts.append(message.content)
     elif isinstance(message.content, list):
-        # Handle complex content like tool calls (Anthropic format)
         for item in message.content:
             if item.get("type") == "text":
                 parts.append(item["text"])
@@ -30,7 +31,6 @@ def format_message_content(message):
     else:
         parts.append(str(message.content))
 
-    # Handle tool calls attached to the message (OpenAI format) - only if not already processed
     if not tool_calls_processed and hasattr(message, "tool_calls") and message.tool_calls:
         for tool_call in message.tool_calls:
             parts.append(f"\n🔧 Tool Call: {tool_call['name']}")
@@ -40,7 +40,7 @@ def format_message_content(message):
     return "\n".join(parts)
 
 
-def format_messages(messages):
+def format_messages(messages: list[BaseMessage]) -> None:
     """Format and display a list of messages with Rich formatting."""
     for m in messages:
         msg_type = m.__class__.__name__.replace("Message", "")
@@ -56,7 +56,7 @@ def format_messages(messages):
             console.print(Panel(content, title=f"📝 {msg_type}", border_style="white"))
 
 
-def show_prompt(prompt_text: str, title: str = "Prompt", border_style: str = "blue"):
+def show_prompt(prompt_text: str, title: str = "Prompt", border_style: str = "blue") -> None:
     """Display a prompt with rich formatting and XML tag highlighting.
 
     Args:
@@ -79,16 +79,21 @@ def show_prompt(prompt_text: str, title: str = "Prompt", border_style: str = "bl
     )
 
 
-async def stream_agent(agent, query, config=None):
+async def stream_agent(
+    agent: Pregel,
+    query: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Stream agent execution with formatted output."""
+    current_state: dict[str, Any] = {}
     async for graph_name, stream_mode, event in agent.astream(
         query, stream_mode=["updates", "values"], subgraphs=True, config=config
     ):
         if stream_mode == "updates":
-            print(f"Graph: {graph_name if len(graph_name) > 0 else 'root'}")
+            console.print(f"Graph: {graph_name if len(graph_name) > 0 else 'root'}")
 
-            node, result = list(event.items())[0]
-            print(f"Node: {node}")
+            node, result = next(iter(event.items()))
+            console.print(f"Node: {node}")
 
             for key in result.keys():
                 if "messages" in key:
