@@ -113,4 +113,4 @@ data sources and tools...
 
 ## Future work
 
-**Option C: LangGraph Server deployment** — deploy this agent as a hosted API using LangGraph Server with Docker and Postgres-backed checkpointing. See [`langgraph-task-maistro`](https://github.com/pytholic/langgraph-task-maistro) for a reference implementation of that pattern. A `langgraph.json` stub is already included in this repo as a forward pointer.
+Will be building more projects on top of this template design.

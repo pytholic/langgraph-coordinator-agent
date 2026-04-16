@@ -18,7 +18,8 @@ from deep_research_agent.prompts.system import (
 from deep_research_agent.state import DeepAgentState
 from deep_research_agent.task import _create_task_tool
 from deep_research_agent.tools.files import ls, read_file, write_file
-from deep_research_agent.tools.research import get_today_str, tavily_search, think_tool
+from deep_research_agent.tools.research import get_today_str, think_tool
+from deep_research_agent.tools.web import tavily_search
 from deep_research_agent.tools.todos import read_todos, write_todos
 
 

@@ -1,224 +1,81 @@
-"""Research Tools.
+"""Shared research types, protocol, and utilities.
 
-This module provides search and content processing utilities for the research agent,
-including web search capabilities and content summarization tools.
+Defines the SearchToolProtocol that all search tool implementations must follow,
+along with shared data types and utility functions.
 
-Created by @pytholic on 2026.04.09
+Created by @pytholic on 2026.04.15
 """
 
-import base64
-import os
-import uuid
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Protocol, runtime_checkable
 
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.tools import InjectedToolArg, InjectedToolCallId, tool
-from langgraph.prebuilt import InjectedState
-from langgraph.types import Command
+from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-from tavily import TavilyClient
-
-from deep_research_agent.prompts.summarize import SUMMARIZE_WEB_SEARCH
-from deep_research_agent.state import DeepAgentState
-
-summarization_model = init_chat_model(model="gpt-5.4-nano")
-tavily_client = TavilyClient()
 
 
 class Summary(BaseModel):
-    """Schema for webpage content summarization."""
+    """LLM-structured output schema for content summarization."""
 
     filename: str = Field(description="Name of the file to store.")
-    summary: str = Field(description="Key learnings from the webpage.")
+    summary: str = Field(description="Key learnings from the content.")
+
+
+@dataclass
+class SearchResult:
+    """Processed result from any search source."""
+
+    title: str
+    url: str
+    summary: str
+    filename: str
+    raw_content: str
+
+
+@runtime_checkable
+class SearchToolProtocol(Protocol):
+    """Protocol defining the interface for all search tool implementations."""
+
+    def search(self, query: str, **kwargs: object) -> list[dict[str, object]]:
+        """Execute a raw search query and return API results.
+
+        Args:
+            query: Search query string
+            **kwargs: Source-specific search parameters
+
+        Returns:
+            Raw results from the search API
+        """
+        ...
+
+    def process(self, results: list[dict[str, object]]) -> list[SearchResult]:
+        """Process raw API results into standardized SearchResult objects.
+
+        Calls summarize() internally for each result where applicable.
+
+        Args:
+            results: Raw results from search()
+
+        Returns:
+            List of processed SearchResult objects
+        """
+        ...
+
+    def summarize(self, content: str) -> str | None:
+        """Summarize raw content using an LLM.
+
+        Args:
+            content: Raw text content to summarize
+
+        Returns:
+            Summarized content string, or None if summarization is not applicable
+        """
+        ...
 
 
 def get_today_str() -> str:
     """Get current date in a human-readable format."""
     return datetime.now().strftime("%a %b %-d, %Y")
-
-
-def run_tavily_search(
-    search_query: str,
-    max_results: int = 1,
-    topic: Literal["general", "news", "finance"] = "general",
-    include_raw_content: bool = True,
-) -> dict:
-    """Perform search using Tavily API for a single query.
-
-    Args:
-        search_query: Search query to execute
-        max_results: Maximum number of results per query
-        topic: Topic filter for search results
-        include_raw_content: Whether to include raw webpage content
-
-    Returns:
-        Search results dictionary
-    """
-    search_results = tavily_client.search(
-        query=search_query,
-        max_results=max_results,
-        topic=topic,
-        include_raw_content=include_raw_content,
-    )
-    return search_results
-
-
-def summarize_webpage_content(webpage_content: str) -> Summary:
-    """Summarize webpage content using the configured summarization model.
-
-    Args:
-        webpage_content: Raw webpage content to summarize
-
-    Returns:
-        Summary object with filename and summary
-    """
-    try:
-        # Set up structured output model for summarization
-        structured_model = summarization_model.with_structured_output(Summary)
-
-        # Generate summary
-        summary_and_filename = structured_model.invoke(
-            [
-                HumanMessage(
-                    content=SUMMARIZE_WEB_SEARCH.format(
-                        webpage_content=webpage_content, date=get_today_str()
-                    )
-                )
-            ]
-        )
-
-        return summary_and_filename
-
-    except Exception:
-        # Return a basic summary object on failure
-        return Summary(
-            filename="search_result.md",
-            summary=webpage_content[:1000] + "..."
-            if len(webpage_content) > 1000
-            else webpage_content,
-        )
-
-
-def process_search_results(results: dict) -> list[dict]:
-    """Process search results by summarizing content where available.
-
-    Args:
-        results: Tavily search results dictionary
-
-    Returns:
-        List of processed results with summaries
-    """
-    processed_results = []
-
-    for result in results["results"]:
-        # Use full raw content from tavily
-        raw_content = result.get("raw_content") or result.get("content", "")
-        # Summarize if raw content is available
-        if raw_content:
-            summary_obj = summarize_webpage_content(raw_content)
-        else:
-            # No full content available — skip summarization, use Tavily's snippet
-            summary_obj = Summary(
-                filename="search_result.md",
-                summary=result.get("content", "No content available."),
-            )
-
-        # Make file names unique
-        uid = base64.urlsafe_b64encode(uuid.uuid4().bytes).rstrip(b"=").decode("ascii")[:8]
-        name, ext = os.path.splitext(summary_obj.filename)
-        summary_obj.filename = f"{name}_{uid}{ext}"
-
-        processed_results.append(
-            {
-                "url": result["url"],
-                "title": result["title"],
-                "summary": summary_obj.summary,
-                "filename": summary_obj.filename,
-                "raw_content": raw_content,
-            }
-        )
-
-    return processed_results
-
-
-@tool(parse_docstring=True)
-def tavily_search(
-    query: str,
-    state: Annotated[DeepAgentState, InjectedState],
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    max_results: Annotated[int, InjectedToolArg] = 1,
-    topic: Annotated[Literal["general", "news", "finance"], InjectedToolArg] = "general",
-) -> Command:
-    """Search the web and save detailed results to files while returning minimal context.
-
-    Performs web search and saves full content to files for context offloading.
-    Returns only essential information to help the agent decide on next steps.
-
-    Args:
-        query: Search query to execute
-        state: Injected agent state for file storage
-        tool_call_id: Injected tool call identifier
-        max_results: Maximum number of results to return (default: 1)
-        topic: Topic filter - 'general', 'news', or 'finance' (default: 'general')
-
-    Returns:
-        Command that saves full results to files and provides minimal summary
-    """
-    # Execute search
-    search_results = run_tavily_search(
-        query,
-        max_results=max_results,
-        topic=topic,
-        include_raw_content=True,
-    )
-
-    # Process and summarize results
-    processed_results = process_search_results(search_results)
-
-    # Save each result to a file and prepare summary
-    files = state.get("files", {})
-    saved_files = []
-    summaries = []
-
-    for i, result in enumerate(processed_results):
-        # Use the AI-generated filename from summarization
-        filename = result["filename"]
-
-        # Create file content with full details
-        file_content = f"""# Search Result: {result["title"]}
-
-**URL:** {result["url"]}
-**Query:** {query}
-**Date:** {get_today_str()}
-
-## Summary
-{result["summary"]}
-
-## Raw Content
-{result["raw_content"] if result["raw_content"] else "No raw content available"}
-"""
-        # Save file
-        files[filename] = file_content
-        saved_files.append(filename)
-        summaries.append(f"- {filename}: {result['summary']}...")
-
-    # Create minimal summary for tool message - focus on what was collected
-    summary_text = f"""🔍 Found {len(processed_results)} result(s) for '{query}':
-
-{chr(10).join(summaries)}
-
-📄 Files saved: {", ".join(saved_files)}
-
-💡 Use read_file() to access full details when needed."""
-
-    return Command(
-        update={
-            "files": files,
-            "messages": [ToolMessage(summary_text, tool_call_id=tool_call_id)],
-        }
-    )
 
 
 @tool(parse_docstring=True)
