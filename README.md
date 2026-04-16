@@ -14,6 +14,8 @@ A Manus-style multi-domain research agent built with LangGraph. The parent agent
 
 ## Agentic pattern
 
+> For the reasoning behind choosing LangGraph over a simple LLM tool-calling loop, see [docs/why-langgraph.md](docs/why-langgraph.md).
+
 This agent implements the **Coordinator pattern**: the parent agent uses AI reasoning to dynamically decompose a research question into sub-tasks and dispatches each to a specialized sub-agent. The parent maintains overall context; each sub-agent receives a clean, isolated context window (task description only) and is stateless from the parent's perspective — returning only its final output as a `ToolMessage`.
 
 This differs from hardcoded multi-agent patterns (sequential, parallel) where routing logic is predetermined, and from the Swarm pattern where agents communicate peer-to-peer without a central coordinator.
