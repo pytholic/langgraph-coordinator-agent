@@ -12,6 +12,16 @@ A Manus-style multi-domain research agent built with LangGraph. The parent agent
 | [`langgraph-task-maistro`](https://github.com/pytholic/langgraph-task-maistro)             | Persistent memory (Postgres), Docker deployment, versioned assistants   |
 | **`langgraph-coordinator-agent`** (this repo)                                              | Sub-agent context isolation + virtual FS context offloading             |
 
+## Why the Coordinator pattern?
+
+A single agent with all tools and all context *works* for simple tasks — but breaks down fast. The Coordinator pattern solves three problems simultaneously:
+
+| Problem | Single Agent | Coordinator |
+| --- | --- | --- |
+| **Context rot** — the LLM gets confused as conversation history grows with mixed SQL schemas, search results, and planning notes | One shared context window accumulates everything | Parent keeps planning context; each sub-agent gets a clean slate with only its task description |
+| **Tool overload** — LLMs pick the wrong tool or hallucinate parameters when given too many options | 1 agent + 20 tools = high failure rate | 1 coordinator + N sub-agents (each with ~5 tools) = much higher precision |
+| **Cost/speed mismatch** — not every step needs the most capable model | One model size for everything | Heavyweight model for planning, lightweight models for grunt work (summarization, search, extraction) |
+
 ## Agentic pattern
 
 > For the reasoning behind choosing LangGraph over a simple LLM tool-calling loop, see [docs/why-langgraph.md](docs/why-langgraph.md).
